@@ -13,6 +13,9 @@
     <link rel="apple-touch-icon" href="icon-192x192.png">
     <link rel="manifest" href="manifest.json">
     
+    <!-- HEIC图片转换库 -->
+    <script src="https://cdn.jsdelivr.net/npm/libheif-js@1.14.0/libheif/libheif.js"></script>
+    
     <style>
         :root {
             --color-primary: #FFD6E0;
@@ -230,6 +233,22 @@
             border-radius: 15px;
             cursor: pointer;
         }
+        
+        /* 加载指示器 */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #FFD6E0;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -311,15 +330,15 @@
     </div>
 
     <script>
-        // 初始化数据
+        // 数据库配置
+        const DB_NAME = 'MiaoWardrobeDB';
+        const DB_VERSION = 1;
+        let db;
+        
+        // 应用数据
         let wardrobeData = {
             items: [],
-            categories: [
-                { id: 'tops', name: '上衣' },
-                { id: 'bottoms', name: '下装' },
-                { id: 'dresses', name: '连衣裙' },
-                { id: 'outerwear', name: '外套' }
-            ],
+            categories: [],
             outfits: []
         };
         
@@ -328,69 +347,303 @@
         let deleteType = null;
         let deferredPrompt;
 
-        // PWA安装提示
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            document.getElementById('installContainer').style.display = 'block';
-        });
-
-        document.getElementById('installButton').addEventListener('click', async () => {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                if (outcome === 'accepted') {
-                    document.getElementById('installContainer').style.display = 'none';
-                }
-                deferredPrompt = null;
-            }
-        });
-
-        // 注册Service Worker
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js')
-                    .then(registration => {
-                        console.log('ServiceWorker 注册成功: ', registration.scope);
-                    })
-                    .catch(err => {
-                        console.log('ServiceWorker 注册失败: ', err);
-                    });
-            });
-        }
-
-        // 页面加载时初始化
-        document.addEventListener('DOMContentLoaded', function() {
-            loadData();
-            renderCategoryTabs();
-            renderWardrobeItems();
-            renderOutfits();
-            
-            document.getElementById('add-item-form').addEventListener('submit', addNewItem);
-            document.getElementById('new-outfit-form').addEventListener('submit', createNewOutfit);
-        });
-
-        // 将图片转换为Base64
-        function getBase64(file) {
+        // 初始化数据库
+        async function initDB() {
             return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = error => reject(error);
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                
+                request.onupgradeneeded = (event) => {
+                    db = event.target.result;
+                    
+                    if (!db.objectStoreNames.contains('items')) {
+                        db.createObjectStore('items', { keyPath: 'id' });
+                    }
+                    
+                    if (!db.objectStoreNames.contains('outfits')) {
+                        db.createObjectStore('outfits', { keyPath: 'id' });
+                    }
+                    
+                    if (!db.objectStoreNames.contains('categories')) {
+                        const store = db.createObjectStore('categories', { keyPath: 'id' });
+                        store.add({ id: 'tops', name: '上衣' });
+                        store.add({ id: 'bottoms', name: '下装' });
+                        store.add({ id: 'dresses', name: '连衣裙' });
+                        store.add({ id: 'outerwear', name: '外套' });
+                    }
+                };
+                
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    resolve(db);
+                };
+                
+                request.onerror = (event) => {
+                    reject('数据库打开失败: ' + event.target.error);
+                };
             });
         }
 
         // 加载数据
-        function loadData() {
-            const savedData = localStorage.getItem('wardrobeData');
-            if (savedData) {
-                wardrobeData = JSON.parse(savedData);
+        async function loadData() {
+            if (!db) await initDB();
+            
+            return new Promise((resolve) => {
+                const transaction = db.transaction(['items', 'outfits', 'categories'], 'readonly');
+                
+                const itemsRequest = transaction.objectStore('items').getAll();
+                const outfitsRequest = transaction.objectStore('outfits').getAll();
+                const categoriesRequest = transaction.objectStore('categories').getAll();
+                
+                Promise.all([
+                    promisifyRequest(itemsRequest),
+                    promisifyRequest(outfitsRequest),
+                    promisifyRequest(categoriesRequest)
+                ]).then(([items, outfits, categories]) => {
+                    wardrobeData = { items, outfits, categories };
+                    resolve(wardrobeData);
+                });
+            });
+        }
+
+        // 保存衣物到数据库
+        async function saveItemToStorage(item) {
+            if (!db) await initDB();
+            
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['items'], 'readwrite');
+                const store = transaction.objectStore('items');
+                
+                const request = store.put(item);
+                
+                request.onsuccess = () => resolve();
+                request.onerror = (event) => reject(event.target.error);
+            });
+        }
+
+        // 保存搭配到数据库
+        async function saveOutfitToStorage(outfit) {
+            if (!db) await initDB();
+            
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['outfits'], 'readwrite');
+                const store = transaction.objectStore('outfits');
+                
+                const request = store.put(outfit);
+                
+                request.onsuccess = () => resolve();
+                request.onerror = (event) => reject(event.target.error);
+            });
+        }
+
+        // 辅助函数：将IndexedDB请求转为Promise
+        function promisifyRequest(request) {
+            return new Promise((resolve, reject) => {
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        // 图片压缩函数
+        async function compressAndConvertImage(file, maxWidth = 800, quality = 0.7) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const scale = Math.min(maxWidth / img.width, 1);
+                        canvas.width = img.width * scale;
+                        canvas.height = img.height * scale;
+                        
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        
+                        canvas.toBlob((blob) => {
+                            const reader = new FileReader();
+                            reader.onload = () => resolve(reader.result);
+                            reader.readAsDataURL(blob);
+                        }, 'image/jpeg', quality);
+                    };
+                    img.onerror = reject;
+                    img.src = event.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // HEIC转换函数
+        async function convertHeicToJpeg(file) {
+            if (typeof window.libheic === 'undefined') {
+                throw new Error('HEIC转换库未加载');
+            }
+            
+            const arrayBuffer = await file.arrayBuffer();
+            const decoder = new libheic.HeifDecoder();
+            const data = decoder.decode(arrayBuffer);
+            
+            if (data.length === 0) throw new Error('HEIC解码失败');
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = data[0].get_width();
+            canvas.height = data[0].get_height();
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.createImageData(canvas.width, canvas.height);
+            data[0].display(imageData);
+            ctx.putImageData(imageData, 0, 0);
+            
+            return new Promise((resolve) => {
+                canvas.toBlob((blob) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.readAsDataURL(blob);
+                }, 'image/jpeg', 0.8);
+            });
+        }
+
+        // PWA安装提示
+        function checkPWAInstallable() {
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredPrompt = e;
+                
+                // 只在用户与页面有交互后才显示安装提示
+                document.addEventListener('click', function showInstallPrompt() {
+                    document.getElementById('installContainer').style.display = 'block';
+                    document.removeEventListener('click', showInstallPrompt);
+                }, { once: true });
+            });
+            
+            window.addEventListener('appinstalled', () => {
+                document.getElementById('installContainer').style.display = 'none';
+            });
+            
+            document.getElementById('installButton').addEventListener('click', async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') {
+                        document.getElementById('installContainer').style.display = 'none';
+                    }
+                    deferredPrompt = null;
+                }
+            });
+        }
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                // 显示加载状态
+                const wardrobeContainer = document.getElementById('wardrobe-items');
+                wardrobeContainer.innerHTML = '<div class="loader"></div>';
+                
+                await initDB();
+                await loadData();
+                
+                renderCategoryTabs();
+                renderWardrobeItems();
+                renderOutfits();
+                
+                document.getElementById('add-item-form').addEventListener('submit', addNewItem);
+                document.getElementById('new-outfit-form').addEventListener('submit', createNewOutfit);
+                
+                // 检查PWA安装状态
+                checkPWAInstallable();
+            } catch (error) {
+                console.error('初始化失败:', error);
+                alert('应用初始化失败，请刷新页面重试');
+            }
+        });
+
+        // 添加新衣物
+        async function addNewItem(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('item-name').value;
+            const category = document.getElementById('item-category').value;
+            const imageFile = document.getElementById('item-image').files[0];
+            
+            if (!imageFile) {
+                alert('请选择图片');
+                return;
+            }
+            
+            try {
+                // 显示加载状态
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                const originalText = submitBtn.textContent;
+                submitBtn.textContent = '处理中...';
+                submitBtn.disabled = true;
+                
+                // 处理图片
+                let imageBase64;
+                if (imageFile.type === 'image/heic' || imageFile.type === 'image/heif' || 
+                    imageFile.name.toLowerCase().endsWith('.heic') || 
+                    imageFile.name.toLowerCase().endsWith('.heif')) {
+                    // iOS特殊格式处理
+                    imageBase64 = await convertHeicToJpeg(imageFile);
+                } else {
+                    // 普通图片处理
+                    imageBase64 = await compressAndConvertImage(imageFile);
+                }
+                
+                const newItem = {
+                    id: 'item-' + Date.now(),
+                    name,
+                    category,
+                    image: imageBase64,
+                    createdAt: new Date().toISOString()
+                };
+                
+                await saveItemToStorage(newItem);
+                document.getElementById('add-item-form').reset();
+                
+                // 恢复按钮状态
+                submitBtn.textContent = originalText;
+                submitBtn.disabled = false;
+                
+                wardrobeData.items.push(newItem);
+                renderWardrobeItems();
+                renderCategoryTabs();
+                
+                // 切换回衣橱标签页
+                document.querySelector('.tab').click();
+            } catch (error) {
+                alert('图片处理失败: ' + error.message);
+                console.error(error);
             }
         }
 
-        // 保存数据
-        function saveData() {
-            localStorage.setItem('wardrobeData', JSON.stringify(wardrobeData));
+        // 创建新搭配
+        async function createNewOutfit(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('outfit-name').value;
+            const checkboxes = document.querySelectorAll('#outfit-items-selection input[type="checkbox"]:checked');
+            
+            if (checkboxes.length < 2) {
+                alert('请至少选择两件衣物');
+                return;
+            }
+            
+            const items = Array.from(checkboxes).map(cb => cb.value);
+            
+            const newOutfit = {
+                id: 'outfit-' + Date.now(),
+                name,
+                items,
+                createdAt: new Date().toISOString()
+            };
+            
+            try {
+                await saveOutfitToStorage(newOutfit);
+                wardrobeData.outfits.push(newOutfit);
+                closeModal('new-outfit-modal');
+                renderOutfits();
+            } catch (error) {
+                alert('保存搭配失败: ' + error.message);
+                console.error(error);
+            }
         }
 
         // 切换标签页
@@ -518,43 +771,6 @@
             });
         }
 
-        // 添加新衣物
-        async function addNewItem(e) {
-            e.preventDefault();
-            
-            const name = document.getElementById('item-name').value;
-            const category = document.getElementById('item-category').value;
-            const imageFile = document.getElementById('item-image').files[0];
-            
-            if (!imageFile) {
-                alert('请选择图片');
-                return;
-            }
-            
-            try {
-                const imageBase64 = await getBase64(imageFile);
-                
-                const newItem = {
-                    id: 'item-' + Date.now(),
-                    name,
-                    category,
-                    image: imageBase64,
-                    createdAt: new Date().toISOString()
-                };
-                
-                wardrobeData.items.push(newItem);
-                saveData();
-                document.getElementById('add-item-form').reset();
-                renderWardrobeItems();
-                renderCategoryTabs();
-                
-                // 切换回衣橱标签页
-                document.querySelector('.tab').click();
-            } catch (error) {
-                alert('图片上传失败: ' + error.message);
-            }
-        }
-
         // 加入搭配
         function addToOutfit(itemId) {
             openNewOutfitModal();
@@ -574,32 +790,6 @@
             document.getElementById('new-outfit-modal').style.display = 'flex';
         }
 
-        // 创建新搭配
-        function createNewOutfit(e) {
-            e.preventDefault();
-            
-            const name = document.getElementById('outfit-name').value;
-            const checkboxes = document.querySelectorAll('#outfit-items-selection input[type="checkbox"]:checked');
-            
-            if (checkboxes.length < 2) {
-                alert('请至少选择两件衣物');
-                return;
-            }
-            
-            const items = Array.from(checkboxes).map(cb => cb.value);
-            
-            wardrobeData.outfits.push({
-                id: 'outfit-' + Date.now(),
-                name,
-                items,
-                createdAt: new Date().toISOString()
-            });
-            
-            saveData();
-            closeModal('new-outfit-modal');
-            renderOutfits();
-        }
-
         // 确认删除衣物
         function confirmDeleteItem(itemId) {
             itemToDelete = itemId;
@@ -617,21 +807,69 @@
         }
 
         // 执行删除
-        function confirmDelete() {
-            if (deleteType === 'item') {
-                wardrobeData.items = wardrobeData.items.filter(item => item.id !== itemToDelete);
-                wardrobeData.outfits = wardrobeData.outfits.filter(outfit => {
-                    outfit.items = outfit.items.filter(itemId => itemId !== itemToDelete);
-                    return outfit.items.length >= 2;
-                });
-            } else if (deleteType === 'outfit') {
-                wardrobeData.outfits = wardrobeData.outfits.filter(outfit => outfit.id !== itemToDelete);
-            }
+        async function confirmDelete() {
+            if (!db) await initDB();
             
-            saveData();
-            closeModal('confirm-delete-modal');
-            renderWardrobeItems();
-            renderOutfits();
+            try {
+                if (deleteType === 'item') {
+                    // 从items存储中删除
+                    await new Promise((resolve, reject) => {
+                        const transaction = db.transaction(['items'], 'readwrite');
+                        const store = transaction.objectStore('items');
+                        const request = store.delete(itemToDelete);
+                        request.onsuccess = resolve;
+                        request.onerror = reject;
+                    });
+                    
+                    // 更新outfits存储
+                    const outfits = await promisifyRequest(
+                        db.transaction('outfits').objectStore('outfits').getAll()
+                    );
+                    
+                    for (const outfit of outfits) {
+                        if (outfit.items.includes(itemToDelete)) {
+                            const updatedItems = outfit.items.filter(id => id !== itemToDelete);
+                            if (updatedItems.length >= 2) {
+                                await new Promise((resolve, reject) => {
+                                    const transaction = db.transaction(['outfits'], 'readwrite');
+                                    const store = transaction.objectStore('outfits');
+                                    const request = store.put({
+                                        ...outfit,
+                                        items: updatedItems
+                                    });
+                                    request.onsuccess = resolve;
+                                    request.onerror = reject;
+                                });
+                            } else {
+                                // 如果搭配中衣物少于2件，则删除该搭配
+                                await new Promise((resolve, reject) => {
+                                    const transaction = db.transaction(['outfits'], 'readwrite');
+                                    const store = transaction.objectStore('outfits');
+                                    const request = store.delete(outfit.id);
+                                    request.onsuccess = resolve;
+                                    request.onerror = reject;
+                                });
+                            }
+                        }
+                    }
+                } else if (deleteType === 'outfit') {
+                    await new Promise((resolve, reject) => {
+                        const transaction = db.transaction(['outfits'], 'readwrite');
+                        const store = transaction.objectStore('outfits');
+                        const request = store.delete(itemToDelete);
+                        request.onsuccess = resolve;
+                        request.onerror = reject;
+                    });
+                }
+                
+                closeModal('confirm-delete-modal');
+                await loadData(); // 重新加载数据
+                renderWardrobeItems();
+                renderOutfits();
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+                console.error(error);
+            }
         }
 
         // 关闭模态框
@@ -639,6 +877,19 @@
             document.getElementById(modalId).style.display = 'none';
             itemToDelete = null;
             deleteType = null;
+        }
+
+        // 注册Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(registration => {
+                        console.log('ServiceWorker 注册成功: ', registration.scope);
+                    })
+                    .catch(err => {
+                        console.log('ServiceWorker 注册失败: ', err);
+                    });
+            });
         }
     </script>
 </body>
