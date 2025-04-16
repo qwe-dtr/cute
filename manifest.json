@@ -1,12 +1,11 @@
 {
   "name": "喵衣橱",
-  "short_name": "衣橱",
-  "start_url": ".",
+  "short_name": "喵衣橱",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#FFF3E0",
   "theme_color": "#FFD6E0",
-  "description": "个人电子衣橱管理应用",
-  "orientation": "portrait",
+  "description": "您的个人电子衣橱管理应用",
   "icons": [
     {
       "src": "icon-192x192.png",
@@ -17,6 +16,14 @@
       "src": "icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": {
+        "image/*": [".jpg", ".jpeg", ".png", ".heic"]
+      }
     }
   ]
 }
