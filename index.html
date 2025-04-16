@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>喵衣橱 - 电子衣橱</title>
+    
+    <!-- PWA相关meta标签 -->
+    <meta name="theme-color" content="#FFD6E0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="喵衣橱">
+    <link rel="apple-touch-icon" href="icon-192x192.png">
+    <link rel="manifest" href="manifest.json">
+    
+    <style>
+        :root {
+            --color-primary: #FFD6E0;
+            --color-secondary: #FFF9C4;
+            --color-accent: #FFCCBC;
+            --color-text: #5D4037;
+            --color-shadow: rgba(0, 0, 0, 0.1);
+        }
+        
+        body {
+            font-family: 'Arial Rounded MT Bold', 'Arial', sans-serif;
+            background-color: #FFF3E0;
+            color: var(--color-text);
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            padding: 20px 0;
+            text-align: center;
+            border-radius: 0 0 15px 15px;
+            box-shadow: 0 4px 8px var(--color-shadow);
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: #E91E63;
+            font-size: 2.5rem;
+            margin: 0;
+        }
+        
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            margin: 0 5px;
+            background-color: var(--color-secondary);
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .tab.active {
+            background-color: var(--color-primary);
+        }
+        
+        .tab-content {
+            display: none;
+            background-color: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 10px var(--color-shadow);
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .category-tabs {
+            display: flex;
+            overflow-x: auto;
+            margin-bottom: 20px;
+        }
+        
+        .category-tab {
+            padding: 8px 15px;
+            margin-right: 5px;
+            background-color: var(--color-secondary);
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+        }
+        
+        .category-tab.active {
+            background-color: var(--color-primary);
+        }
+        
+        .wardrobe-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .clothing-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px var(--color-shadow);
+        }
+        
+        .clothing-img-container {
+            width: 100%;
+            height: 250px;
+            overflow: hidden;
+        }
+        
+        .clothing-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .clothing-info {
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .btn {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            margin: 0 3px;
+        }
+        
+        .btn-add-outfit {
+            background-color: #C8E6C9;
+        }
+        
+        .btn-delete {
+            background-color: #FFCDD2;
+        }
+        
+        .outfit-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .outfit-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px var(--color-shadow);
+        }
+        
+        .outfit-images {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            padding: 10px;
+        }
+        
+        .outfit-img {
+            width: calc(50% - 3px);
+            height: 120px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--color-primary);
+            border-radius: 8px;
+        }
+        
+        /* 模态框样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        /* 安装提示按钮 */
+        #installContainer {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            display: none;
+            z-index: 100;
+        }
+        
+        #installButton {
+            background-color: #FFD6E0;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 15px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="installContainer">
+        <button id="installButton">安装喵衣橱APP</button>
+    </div>
+    
+    <header>
+        <div class="container">
+            <h1>🐱 喵衣橱</h1>
+        </div>
+    </header>
+    
+    <div class="container">
+        <div class="tabs">
+            <button class="tab active" onclick="openTab('my-wardrobe')">我的衣橱</button>
+            <button class="tab" onclick="openTab('add-item')">添加衣物</button>
+            <button class="tab" onclick="openTab('outfits')">我的搭配</button>
+        </div>
+        
+        <div id="my-wardrobe" class="tab-content active">
+            <div class="category-tabs" id="category-tabs"></div>
+            <div id="wardrobe-items" class="wardrobe-grid"></div>
+        </div>
+        
+        <div id="add-item" class="tab-content">
+            <form id="add-item-form">
+                <div class="form-group">
+                    <label>衣物名称</label>
+                    <input type="text" id="item-name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>分类</label>
+                    <select id="item-category" class="form-control" required>
+                        <option value="tops">上衣</option>
+                        <option value="bottoms">下装</option>
+                        <option value="dresses">连衣裙</option>
+                        <option value="outerwear">外套</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>图片</label>
+                    <input type="file" id="item-image" class="form-control" accept="image/*" required>
+                </div>
+                <button type="submit" class="btn">添加衣物</button>
+            </form>
+        </div>
+        
+        <div id="outfits" class="tab-content">
+            <button class="btn" onclick="openNewOutfitModal()">新建搭配</button>
+            <div id="outfit-list" class="outfit-container"></div>
+        </div>
+    </div>
+    
+    <div id="new-outfit-modal" class="modal">
+        <div class="modal-content">
+            <span onclick="closeModal('new-outfit-modal')" style="float:right;cursor:pointer">✕</span>
+            <h2>新建搭配</h2>
+            <form id="new-outfit-form">
+                <div class="form-group">
+                    <label>搭配名称</label>
+                    <input type="text" id="outfit-name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>选择衣物</label>
+                    <div id="outfit-items-selection" style="max-height:300px;overflow-y:auto"></div>
+                </div>
+                <button type="submit" class="btn">创建搭配</button>
+            </form>
+        </div>
+    </div>
+    
+    <div id="confirm-delete-modal" class="modal">
+        <div class="modal-content">
+            <p id="delete-message">确认删除？</p>
+            <button onclick="closeModal('confirm-delete-modal')" class="btn">取消</button>
+            <button onclick="confirmDelete()" class="btn btn-delete">删除</button>
+        </div>
+    </div>
+
+    <script>
+        // 初始化数据
+        let wardrobeData = {
+            items: [],
+            categories: [
+                { id: 'tops', name: '上衣' },
+                { id: 'bottoms', name: '下装' },
+                { id: 'dresses', name: '连衣裙' },
+                { id: 'outerwear', name: '外套' }
+            ],
+            outfits: []
+        };
+        
+        let currentCategory = 'all';
+        let itemToDelete = null;
+        let deleteType = null;
+        let deferredPrompt;
+
+        // PWA安装提示
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('installContainer').style.display = 'block';
+        });
+
+        document.getElementById('installButton').addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    document.getElementById('installContainer').style.display = 'none';
+                }
+                deferredPrompt = null;
+            }
+        });
+
+        // 注册Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(registration => {
+                        console.log('ServiceWorker 注册成功: ', registration.scope);
+                    })
+                    .catch(err => {
+                        console.log('ServiceWorker 注册失败: ', err);
+                    });
+            });
+        }
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+            renderCategoryTabs();
+            renderWardrobeItems();
+            renderOutfits();
+            
+            document.getElementById('add-item-form').addEventListener('submit', addNewItem);
+            document.getElementById('new-outfit-form').addEventListener('submit', createNewOutfit);
+        });
+
+        // 将图片转换为Base64
+        function getBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // 加载数据
+        function loadData() {
+            const savedData = localStorage.getItem('wardrobeData');
+            if (savedData) {
+                wardrobeData = JSON.parse(savedData);
+            }
+        }
+
+        // 保存数据
+        function saveData() {
+            localStorage.setItem('wardrobeData', JSON.stringify(wardrobeData));
+        }
+
+        // 切换标签页
+        function openTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.getElementById(tabId).classList.add('active');
+            event.currentTarget.classList.add('active');
+            
+            if (tabId === 'outfits') {
+                renderOutfitSelection();
+            }
+        }
+
+        // 渲染分类标签
+        function renderCategoryTabs() {
+            const container = document.getElementById('category-tabs');
+            container.innerHTML = '';
+            
+            const allTab = document.createElement('button');
+            allTab.className = `category-tab ${currentCategory === 'all' ? 'active' : ''}`;
+            allTab.textContent = '全部';
+            allTab.onclick = () => {
+                currentCategory = 'all';
+                renderCategoryTabs();
+                renderWardrobeItems();
+            };
+            container.appendChild(allTab);
+            
+            wardrobeData.categories.forEach(category => {
+                const tab = document.createElement('button');
+                tab.className = `category-tab ${currentCategory === category.id ? 'active' : ''}`;
+                tab.textContent = category.name;
+                tab.onclick = () => {
+                    currentCategory = category.id;
+                    renderCategoryTabs();
+                    renderWardrobeItems();
+                };
+                container.appendChild(tab);
+            });
+        }
+
+        // 渲染衣物
+        function renderWardrobeItems() {
+            const container = document.getElementById('wardrobe-items');
+            container.innerHTML = '';
+            
+            let itemsToShow = wardrobeData.items;
+            if (currentCategory !== 'all') {
+                itemsToShow = itemsToShow.filter(item => item.category === currentCategory);
+            }
+            
+            if (itemsToShow.length === 0) {
+                container.innerHTML = '<p>暂无衣物</p>';
+                return;
+            }
+            
+            itemsToShow.forEach(item => {
+                const itemElement = document.createElement('div');
+                itemElement.className = 'clothing-card';
+                itemElement.innerHTML = `
+                    <div class="clothing-img-container">
+                        <img src="${item.image}" class="clothing-img">
+                    </div>
+                    <div class="clothing-info">
+                        <h4>${item.name}</h4>
+                        <button class="btn btn-add-outfit" onclick="addToOutfit('${item.id}')">加入搭配</button>
+                        <button class="btn btn-delete" onclick="confirmDeleteItem('${item.id}')">删除</button>
+                    </div>
+                `;
+                container.appendChild(itemElement);
+            });
+        }
+
+        // 渲染搭配
+        function renderOutfits() {
+            const container = document.getElementById('outfit-list');
+            container.innerHTML = '';
+            
+            if (wardrobeData.outfits.length === 0) {
+                container.innerHTML = '<p>暂无搭配</p>';
+                return;
+            }
+            
+            wardrobeData.outfits.forEach(outfit => {
+                const outfitElement = document.createElement('div');
+                outfitElement.className = 'outfit-card';
+                outfitElement.innerHTML = `
+                    <div class="outfit-images">
+                        ${outfit.items.map(itemId => {
+                            const item = wardrobeData.items.find(i => i.id === itemId);
+                            return item ? `<img src="${item.image}" class="outfit-img">` : '';
+                        }).join('')}
+                    </div>
+                    <div style="padding:15px">
+                        <h3>${outfit.name}</h3>
+                        <button class="btn btn-delete" onclick="confirmDeleteOutfit('${outfit.id}')">删除</button>
+                    </div>
+                `;
+                container.appendChild(outfitElement);
+            });
+        }
+
+        // 渲染搭配选择项
+        function renderOutfitSelection() {
+            const container = document.getElementById('outfit-items-selection');
+            container.innerHTML = '';
+            
+            wardrobeData.items.forEach(item => {
+                const itemElement = document.createElement('div');
+                itemElement.style.display = 'flex';
+                itemElement.style.alignItems = 'center';
+                itemElement.style.margin = '5px 0';
+                itemElement.innerHTML = `
+                    <input type="checkbox" id="outfit-item-${item.id}" value="${item.id}" style="margin-right:10px">
+                    <img src="${item.image}" style="width:40px;height:40px;object-fit:cover;border-radius:5px;margin-right:5px">
+                    <span>${item.name}</span>
+                `;
+                container.appendChild(itemElement);
+            });
+        }
+
+        // 添加新衣物
+        async function addNewItem(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('item-name').value;
+            const category = document.getElementById('item-category').value;
+            const imageFile = document.getElementById('item-image').files[0];
+            
+            if (!imageFile) {
+                alert('请选择图片');
+                return;
+            }
+            
+            try {
+                const imageBase64 = await getBase64(imageFile);
+                
+                const newItem = {
+                    id: 'item-' + Date.now(),
+                    name,
+                    category,
+                    image: imageBase64,
+                    createdAt: new Date().toISOString()
+                };
+                
+                wardrobeData.items.push(newItem);
+                saveData();
+                document.getElementById('add-item-form').reset();
+                renderWardrobeItems();
+                renderCategoryTabs();
+                
+                // 切换回衣橱标签页
+                document.querySelector('.tab').click();
+            } catch (error) {
+                alert('图片上传失败: ' + error.message);
+            }
+        }
+
+        // 加入搭配
+        function addToOutfit(itemId) {
+            openNewOutfitModal();
+            const checkbox = document.getElementById(`outfit-item-${itemId}`);
+            if (checkbox) checkbox.checked = true;
+        }
+
+        // 打开新建搭配模态框
+        function openNewOutfitModal() {
+            if (wardrobeData.items.length < 2) {
+                alert('至少需要两件衣物才能创建搭配');
+                return;
+            }
+            
+            document.getElementById('new-outfit-form').reset();
+            renderOutfitSelection();
+            document.getElementById('new-outfit-modal').style.display = 'flex';
+        }
+
+        // 创建新搭配
+        function createNewOutfit(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('outfit-name').value;
+            const checkboxes = document.querySelectorAll('#outfit-items-selection input[type="checkbox"]:checked');
+            
+            if (checkboxes.length < 2) {
+                alert('请至少选择两件衣物');
+                return;
+            }
+            
+            const items = Array.from(checkboxes).map(cb => cb.value);
+            
+            wardrobeData.outfits.push({
+                id: 'outfit-' + Date.now(),
+                name,
+                items,
+                createdAt: new Date().toISOString()
+            });
+            
+            saveData();
+            closeModal('new-outfit-modal');
+            renderOutfits();
+        }
+
+        // 确认删除衣物
+        function confirmDeleteItem(itemId) {
+            itemToDelete = itemId;
+            deleteType = 'item';
+            document.getElementById('delete-message').textContent = '确定要删除这件衣物吗？';
+            document.getElementById('confirm-delete-modal').style.display = 'flex';
+        }
+
+        // 确认删除搭配
+        function confirmDeleteOutfit(outfitId) {
+            itemToDelete = outfitId;
+            deleteType = 'outfit';
+            document.getElementById('delete-message').textContent = '确定要删除这个搭配吗？';
+            document.getElementById('confirm-delete-modal').style.display = 'flex';
+        }
+
+        // 执行删除
+        function confirmDelete() {
+            if (deleteType === 'item') {
+                wardrobeData.items = wardrobeData.items.filter(item => item.id !== itemToDelete);
+                wardrobeData.outfits = wardrobeData.outfits.filter(outfit => {
+                    outfit.items = outfit.items.filter(itemId => itemId !== itemToDelete);
+                    return outfit.items.length >= 2;
+                });
+            } else if (deleteType === 'outfit') {
+                wardrobeData.outfits = wardrobeData.outfits.filter(outfit => outfit.id !== itemToDelete);
+            }
+            
+            saveData();
+            closeModal('confirm-delete-modal');
+            renderWardrobeItems();
+            renderOutfits();
+        }
+
+        // 关闭模态框
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+            itemToDelete = null;
+            deleteType = null;
+        }
+    </script>
+</body>
+</html>
